@@ -59,8 +59,8 @@ g is a primitive root modulo of p
       4009438B 481C6CD7 889A002E D5EE382B C9190DA6 FC026E47
       9558E447 5677E9AA 9E3050E2 765694DF C81F56E8 80B96E71
       60C980DD 98EDD3DF FFFFFFFF FFFFFFFF
-
-   The generator is: 2.
+      The generator is: 2.
+      
  Encryption
  Encryption is widely used on the internet to protect user information being sent between a browser and a server, including passwords, payment information and other personal information that should be considered private. Organizations and individuals also commonly use encryption to protect sensitive data stored on computers, servers and mobile devices like phones or tablets. There are various encryption techniques that are present some of which are:
  • Triple DES
