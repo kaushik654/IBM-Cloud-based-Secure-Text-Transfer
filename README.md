@@ -2,7 +2,7 @@ Cloud security is one of the main concerns in the cloud computing domain. Sharin
 Using Diffehelman Key exchange Key is generated
 ![](src/application/key%20generation.jpeg)
 Diffie–Hellman key exchange establishes a shared secret between two parties that can be used for secret communication for exchanging data over a public network. The above conceptual diagram illustrates the general idea of the key exchange by using colors instead of very large numbers. The process begins by having the two parties, Alice and Bob, agree on an arbitrary starting color that does not need to be kept secret in this example the color is yellow. Each of them selects a secret color that they keep to themselves – in this case, orange and blue-green. The crucial part of the process is that Alice and Bob each mix their own secret color together with their mutually shared color, resulting in orange-tan and light-blue mixtures respectively, and then publicly exchange the two mixed colors. Finally, each of the two mixes the color he or she received from the partner with his or her own private color. The result is a final color mixture (yellow-brown in this case) that is identical to the partner's final color mixture. If a third party listened to the exchange, it would be computationally difficult for this party to determine the secret colors. In fact, when using large numbers rather than colors, this action is computationally expensive for modern supercomputers to do in a reasonable amount of time.
-![]
+![](src/application/DH%20(2).png)
 Method
  Follow the mathematical implementation of Diffie Hellman key exchange protocol.
  p is a prime number. 
@@ -22,4 +22,5 @@ g is a primitive root modulo of p
 • Two fish 
 • AES 
 The technique that we have used in our project is AES and it is described below.
+Tkinter GUI
 ![](src/application/gui.jpeg)
