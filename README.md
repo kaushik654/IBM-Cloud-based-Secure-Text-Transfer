@@ -21,4 +21,4 @@ g is a primitive root modulo of p
 • Two fish 
 • AES 
 The technique that we have used in our project is AES and it is described below.
-![]()
+![](src/application/gui.jpeg)
