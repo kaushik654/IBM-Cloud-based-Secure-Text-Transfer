@@ -14,6 +14,7 @@ g is a primitive root modulo of p
  5. Thus, public key generated for Bob shall be 53%23 = 125%23 = 10
  6. Now, Alice gets the public key of Bob and generates a secret key. i.e. (public key of Bob Private Key of Alice) mod p => (104 ) % 23 => 10000 % 23 => 18
  7. On the other side, Bob also uses a similar method to generate a secret key i.e. (public key of Alice Private Key of Bob) mod p => (43 ) % 23 => 64 % 23 => 18
+ 
  Prime number used-
  FFFFFFFF FFFFFFFF C90FDAA2 2168C234 C4C6628B 80DC1CD1
       29024E08 8A67CC74 020BBEA6 3B139B22 514A0879 8E3404DD
