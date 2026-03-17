@@ -1,41 +1,47 @@
+Two errors visible:
+
+1. `BLEUMetric.a_measure() got unexpected keyword argument '_show_indicator'` — your `a_measure` signature doesn't accept `**kwargs`
+2. `AttributeError: 'Scorer' object has no attribute 'bleu_score'` — you're still using the old `Scorer()`-based code in that cell
+
+---
+
+## Fix: Replace the entire metrics cell with this clean version
+
+This uses **only `nltk` and `rouge_score`** — no `Scorer()` at all:
+
+```python
 import math
 import torch
 import nltk
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from nltk.tokenize import word_tokenize
+from rouge_score import rouge_scorer as rs
 from deepeval.metrics import BaseMetric
-from deepeval.scorer import Scorer
 from deepeval.test_case import LLMTestCase
-from deepeval import evaluate
 
 nltk.download("punkt", quiet=True)
-
-MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"  # Qwen 0.6B
-
-# ─── Load model once ──────────────────────────────────────────────────────────
-print("Loading Qwen 0.6B model...")
-tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_ID, torch_dtype=torch.float16, device_map="auto", trust_remote_code=True
-)
-model.eval()
+nltk.download("punkt_tab", quiet=True)
 
 
-# ─── 1. Perplexity Metric ─────────────────────────────────────────────────────
+# ── Perplexity ────────────────────────────────────────────────────────────────
 class PerplexityMetric(BaseMetric):
     def __init__(self, threshold: float = 100.0):
+        super().__init__()
         self.threshold = threshold
+        self.score = 0.0
+        self.success = False
+        self.reason = ""
 
     def measure(self, test_case: LLMTestCase) -> float:
-        text = test_case.actual_output
-        inputs = tokenizer(text, return_tensors="pt").to(model.device)
+        inputs = tokenizer(test_case.actual_output, return_tensors="pt").to(model.device)
         with torch.no_grad():
-            outputs = model(**inputs, labels=inputs.input_ids)
-            loss = outputs.loss  # cross-entropy = avg negative log-likelihood
+            loss = model(**inputs, labels=inputs.input_ids).loss
         self.score = math.exp(loss.item())
         self.success = self.score < self.threshold
+        self.reason = f"Perplexity={self.score:.2f}, threshold={self.threshold}"
         return self.score
 
-    async def a_measure(self, test_case: LLMTestCase):
+    async def a_measure(self, test_case: LLMTestCase, **kwargs) -> float:  # ← **kwargs fixes error 1
         return self.measure(test_case)
 
     def is_successful(self) -> bool:
@@ -46,27 +52,37 @@ class PerplexityMetric(BaseMetric):
         return "Perplexity"
 
 
-# ─── 2. BLEU Metric ───────────────────────────────────────────────────────────
+# ── BLEU ──────────────────────────────────────────────────────────────────────
 class BLEUMetric(BaseMetric):
-    """
-    Uses DeepEval's built-in Scorer.
-    bleu_type: 'bleu1' | 'bleu2' | 'bleu3' | 'bleu4'
-    """
-    def __init__(self, threshold: float = 0.3, bleu_type: str = "bleu4"):
+    def __init__(self, threshold: float = 0.1, bleu_type: str = "bleu4"):
+        super().__init__()
         self.threshold = threshold
-        self.bleu_type = bleu_type
-        self.scorer = Scorer()
+        self.bleu_type = bleu_type           # ← string, not variable
+        self.score = 0.0
+        self.success = False
+        self.reason = ""
+        weights_map = {
+            "bleu1": (1.0, 0.0, 0.0, 0.0),
+            "bleu2": (0.5, 0.5, 0.0, 0.0),
+            "bleu3": (0.33, 0.33, 0.33, 0.0),
+            "bleu4": (0.25, 0.25, 0.25, 0.25),
+        }
+        self.weights = weights_map.get(bleu_type, (0.25, 0.25, 0.25, 0.25))
+        self.smoothing = SmoothingFunction().method1
 
     def measure(self, test_case: LLMTestCase) -> float:
-        self.score = self.scorer.bleu_score(
-            prediction=test_case.actual_output,
-            references=test_case.expected_output,  # str or list[str]
-            bleu_type=self.bleu_type,
+        hyp = word_tokenize(test_case.actual_output.lower())
+        ref = word_tokenize(test_case.expected_output.lower())
+        self.score = sentence_bleu(
+            [ref], hyp,
+            weights=self.weights,
+            smoothing_function=self.smoothing
         )
         self.success = self.score >= self.threshold
+        self.reason = f"BLEU={self.score:.4f}, threshold={self.threshold}"
         return self.score
 
-    async def a_measure(self, test_case: LLMTestCase):
+    async def a_measure(self, test_case: LLMTestCase, **kwargs) -> float:  # ← **kwargs
         return self.measure(test_case)
 
     def is_successful(self) -> bool:
@@ -77,26 +93,28 @@ class BLEUMetric(BaseMetric):
         return f"BLEU ({self.bleu_type})"
 
 
-# ─── 3. ROUGE Metric ──────────────────────────────────────────────────────────
+# ── ROUGE ─────────────────────────────────────────────────────────────────────
 class ROUGEMetric(BaseMetric):
-    """
-    score_type: 'rouge1' | 'rouge2' | 'rougeL'
-    """
-    def __init__(self, threshold: float = 0.4, score_type: str = "rouge1"):
+    def __init__(self, threshold: float = 0.3, score_type: str = "rouge1"):
+        super().__init__()
         self.threshold = threshold
         self.score_type = score_type
-        self.scorer = Scorer()
+        self.score = 0.0
+        self.success = False
+        self.reason = ""
+        self._scorer = rs.RougeScorer([score_type], use_stemmer=True)
 
     def measure(self, test_case: LLMTestCase) -> float:
-        self.score = self.scorer.rouge_score(
-            prediction=test_case.actual_output,
-            target=test_case.expected_output,
-            score_type=self.score_type,
+        result = self._scorer.score(
+            test_case.expected_output,
+            test_case.actual_output
         )
+        self.score = result[self.score_type].fmeasure
         self.success = self.score >= self.threshold
+        self.reason = f"ROUGE={self.score:.4f}, threshold={self.threshold}"
         return self.score
 
-    async def a_measure(self, test_case: LLMTestCase):
+    async def a_measure(self, test_case: LLMTestCase, **kwargs) -> float:  # ← **kwargs
         return self.measure(test_case)
 
     def is_successful(self) -> bool:
@@ -105,64 +123,16 @@ class ROUGEMetric(BaseMetric):
     @property
     def __name__(self):
         return f"ROUGE ({self.score_type})"
+```
 
+---
 
-# ─── Generate output from Qwen 0.6B ──────────────────────────────────────────
-def generate_output(prompt: str, max_new_tokens: int = 128) -> str:
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-    with torch.no_grad():
-        out = model.generate(**inputs, max_new_tokens=max_new_tokens)
-    # strip the prompt tokens from output
-    generated = out[0][inputs.input_ids.shape[1]:]
-    return tokenizer.decode(generated, skip_special_tokens=True)
+## Root causes summary
 
+| Error | Cause | Fix |
+|---|---|---|
+| `unexpected keyword argument '_show_indicator'` | `a_measure` signature too strict | Add `**kwargs` to all `a_measure` methods |
+| `Scorer has no attribute 'bleu_score'` | Old cell still using `Scorer()` | Remove `Scorer`, use `nltk` directly |
+| Previous `bleu1 not defined` | Missing quotes | `self.bleu_type = bleu_type` |
 
-# ─── Test Cases ───────────────────────────────────────────────────────────────
-samples = [
-    {
-        "input": "What is the capital of France?",
-        "expected": "The capital of France is Paris.",
-    },
-    {
-        "input": "Explain what photosynthesis is in one sentence.",
-        "expected": "Photosynthesis is the process by which plants use sunlight to convert CO2 and water into glucose and oxygen.",
-    },
-    {
-        "input": "What is 2 + 2?",
-        "expected": "2 + 2 equals 4.",
-    },
-]
-
-test_cases = []
-for s in samples:
-    actual = generate_output(s["input"])
-    print(f"\nInput   : {s['input']}")
-    print(f"Expected: {s['expected']}")
-    print(f"Actual  : {actual}")
-    test_cases.append(
-        LLMTestCase(
-            input=s["input"],
-            actual_output=actual,
-            expected_output=s["expected"],
-        )
-    )
-
-# ─── Run Evaluation ───────────────────────────────────────────────────────────
-metrics = [
-    PerplexityMetric(threshold=100.0),
-    BLEUMetric(threshold=0.1, bleu_type="bleu4"),
-    ROUGEMetric(threshold=0.3, score_type="rouge1"),
-    ROUGEMetric(threshold=0.2, score_type="rouge2"),
-    ROUGEMetric(threshold=0.3, score_type="rougeL"),
-]
-
-results = evaluate(test_cases, metrics)
-
-# ─── Print Summary ────────────────────────────────────────────────────────────
-print("\n" + "="*60)
-print("EVALUATION SUMMARY")
-print("="*60)
-for tc, metric in [(tc, m) for tc in test_cases for m in metrics]:
-    metric.measure(tc)
-    status = "✅ PASS" if metric.is_successful() else "❌ FAIL"
-    print(f"[{metric.__name__}] Score: {metric.score:.4f}  {status}")
+The `**kwargs` fix is the critical one — DeepEval passes internal kwargs like `_show_indicator` and `_in_component` to `a_measure` which your signatures were rejecting.
