@@ -1,12 +1,16 @@
 private fun copyToLocalStorage(filename: String): File {
-    val storageFile = File(context.filesDir, filename)
+    val storageFile = File(parent = context.filesDir, child = filename)
     try {
-        context.assets.open(filename).use { input ->
-            storageFile.outputStream().use { output ->
-                input.copyTo(output, bufferSize = 8192) // streams in 8KB chunks
+        if (!storageFile.exists()) {
+            context.assets.open(filename).use { input ->
+                storageFile.outputStream().use { output ->
+                    input.copyTo(output, bufferSize = 8192)
+                }
             }
+            android.util.Log.d("SentenceEmbeddingProvider", "Successfully copied $filename")
+        } else {
+            android.util.Log.d("SentenceEmbeddingProvider", "File already exists, skipping copy: $filename")
         }
-        android.util.Log.d("SentenceEmbeddingProvider", "Successfully copied $filename")
     } catch (e: Exception) {
         android.util.Log.e("SentenceEmbeddingProvider", "Failed to copy $filename", e)
         if (!storageFile.exists()) throw e
